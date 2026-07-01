@@ -252,18 +252,57 @@ def preprocess(df_raw: pd.DataFrame, top_tkp=None):
 
 def build_features(df: pd.DataFrame, train_columns=None):
     """
-    Mengambil kolom FITUR dari dataframe lalu melakukan one-hot encoding.
+    Mengambil kolom FITUR dari dataframe lalu melakukan one-hot encoding
+    (mengubah kategori teks menjadi kolom angka 0/1).
 
-    Jika train_columns diberikan (kolom hasil get_dummies saat training),
-    maka hasil encoding akan di-reindex agar kolomnya identik dengan saat
-    training (kolom baru dibuang, kolom yang hilang diisi 0). Ini penting
-    untuk data baru pada saat prediksi.
+    Ada dua mode:
+
+    1. train_columns=None (dipakai saat TRAINING) — data yang masuk adalah
+       seluruh dataset dengan banyak baris, sehingga pd.get_dummies bisa
+       mendeteksi semua kategori yang ada dengan benar.
+
+    2. train_columns diberikan (dipakai saat KLASIFIKASI/PREDIKSI kasus
+       baru) — data yang masuk bisa hanya 1 baris (form manual) atau
+       beberapa baris (batch).
+       PENTING: pd.get_dummies TIDAK BOLEH dipakai langsung di sini, karena
+       untuk dataframe kecil/1-baris, tiap kolom kategorikal cuma punya
+       1 nilai unik, dan drop_first=True akan membuang satu-satunya nilai
+       itu sehingga TIDAK ADA kolom hasil encoding yang terbentuk sama
+       sekali — akibatnya semua pilihan kategorikal (JK, Pendidikan, dst)
+       selalu ter-encode jadi 0, apapun yang dipilih user. Sebagai
+       gantinya, encoding dibuat manual per-nilai berdasarkan
+       train_columns yang sudah diketahui dari hasil training.
     """
     X = df[FITUR].copy()
-    X = pd.get_dummies(X, drop_first=True)
-    X = X.fillna(0)
 
-    if train_columns is not None:
-        X = X.reindex(columns=train_columns, fill_value=0)
+    if train_columns is None:
+        # --- Mode TRAINING: dataset besar, get_dummies aman dipakai ---
+        X = pd.get_dummies(X, drop_first=True)
+        X = X.fillna(0)
+        return X
 
-    return X
+    # --- Mode KLASIFIKASI: encoding manual, aman untuk 1 baris atau banyak ---
+    numeric_cols = [c for c in X.columns if pd.api.types.is_numeric_dtype(X[c])]
+    categorical_cols = [c for c in X.columns if c not in numeric_cols]
+
+    X_encoded = pd.DataFrame(0, index=X.index, columns=train_columns, dtype=float)
+
+    # Kolom numerik: salin langsung nilainya (jika ada di train_columns)
+    for col in numeric_cols:
+        if col in X_encoded.columns:
+            X_encoded[col] = pd.to_numeric(X[col], errors="coerce").fillna(0).values
+
+    # Kolom kategorikal: aktifkan (=1) kolom hasil encoding yang sesuai
+    # dengan nilai pada baris tsb.
+    # Jika nilai tsb adalah kategori referensi (yang dulu dibuang saat
+    # training via drop_first) atau kategori baru yang tak pernah terlihat
+    # saat training, maka semua kolom hasil encoding untuk fitur itu tetap
+    # 0 — ini sudah benar secara definisi one-hot encoding dengan drop_first.
+    for col in categorical_cols:
+        for idx in X.index:
+            value = X.at[idx, col]
+            nama_kolom = f"{col}_{value}"
+            if nama_kolom in X_encoded.columns:
+                X_encoded.at[idx, nama_kolom] = 1.0
+
+    return X_encoded
