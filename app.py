@@ -6,7 +6,6 @@ Direplikasi dari notebook Untitled8.ipynb.
 """
 
 import io
-import joblib
 import numpy as np
 import pandas as pd
 import streamlit as st
@@ -19,8 +18,6 @@ from sklearn.metrics import accuracy_score, classification_report, confusion_mat
 
 from preprocessing import preprocess, build_features, FITUR, validate_columns
 
-MODEL_PATH = "model_artifact.joblib"
-
 st.set_page_config(
     page_title="Klasifikasi Keparahan Kecelakaan",
     layout="wide",
@@ -28,21 +25,6 @@ st.set_page_config(
 
 st.title("🚦 Klasifikasi Keparahan Kecelakaan Lalu Lintas")
 st.caption("Decision Tree — replikasi dari notebook analisis data kecelakaan")
-
-# ---------------------------------------------------------------------------
-# Helper: simpan / muat artifact model
-# ---------------------------------------------------------------------------
-
-def save_artifact(model, train_columns, top_tkp):
-    joblib.dump(
-        {"model": model, "train_columns": train_columns, "top_tkp": top_tkp},
-        MODEL_PATH,
-    )
-
-
-def load_artifact_bytes(file_bytes):
-    return joblib.load(io.BytesIO(file_bytes))
-
 
 # ---------------------------------------------------------------------------
 # Session state init
@@ -54,8 +36,8 @@ if "model" not in st.session_state:
     st.session_state.top_tkp = None
     st.session_state.metrics = None
 
-tab_train, tab_predict, tab_about = st.tabs(
-    ["📊 Latih Model", "🔮 Prediksi", "ℹ️ Tentang"]
+tab_train, tab_klasifikasi, tab_about = st.tabs(
+    ["📊 Latih Model", "🔮 Klasifikasi", "ℹ️ Tentang"]
 )
 
 # ---------------------------------------------------------------------------
@@ -149,7 +131,6 @@ with tab_train:
             "test_acc": model.score(X_test, y_test),
         }
 
-        save_artifact(model, X.columns.tolist(), top_tkp)
         st.success("Model selesai dilatih ✅")
 
     if st.session_state.model is not None:
@@ -171,7 +152,7 @@ with tab_train:
             m["cm"], annot=True, fmt="d", cmap="Blues",
             xticklabels=m["classes"], yticklabels=m["classes"], ax=ax,
         )
-        ax.set_xlabel("Prediksi")
+        ax.set_xlabel("Hasil Klasifikasi")
         ax.set_ylabel("Aktual")
         st.pyplot(fig)
 
@@ -182,42 +163,23 @@ with tab_train:
         }).sort_values("Importance", ascending=False).head(20)
         st.bar_chart(importance.set_index("Fitur"))
 
-        with open(MODEL_PATH, "rb") as f:
-            st.download_button(
-                "⬇️ Unduh Model (.joblib)",
-                data=f,
-                file_name="model_kecelakaan.joblib",
-            )
-
 # ---------------------------------------------------------------------------
-# TAB 2 — PREDIKSI
+# TAB 2 — KLASIFIKASI
 # ---------------------------------------------------------------------------
-with tab_predict:
-    st.header("Prediksi Kasus Baru")
+with tab_klasifikasi:
+    st.header("Klasifikasi Kasus Baru")
 
     st.write(
-        "Gunakan model yang baru dilatih di tab sebelumnya, atau unggah "
-        "file model (.joblib) yang sudah pernah disimpan."
+        "Latih model terlebih dahulu di tab '📊 Latih Model', "
+        "kemudian isi form di bawah untuk melakukan klasifikasi."
     )
-
-    model_file = st.file_uploader(
-        "Unggah model (.joblib) yang sudah pernah dilatih",
-        type=["joblib"],
-        key="model_uploader",
-    )
-    if model_file is not None:
-        artifact = load_artifact_bytes(model_file.read())
-        st.session_state.model = artifact["model"]
-        st.session_state.train_columns = artifact["train_columns"]
-        st.session_state.top_tkp = artifact["top_tkp"]
-        st.success("Model berhasil dimuat dari file.")
 
     if st.session_state.model is None:
-        st.info("Belum ada model. Latih model di tab '📊 Latih Model' terlebih dahulu, atau unggah file model.")
+        st.info("Belum ada model. Latih model di tab '📊 Latih Model' terlebih dahulu.")
     else:
         st.subheader("Input Data Kasus")
 
-        with st.form("predict_form"):
+        with st.form("klasifikasi_form"):
             c1, c2 = st.columns(2)
             with c1:
                 st.markdown("**Tersangka**")
@@ -260,7 +222,7 @@ with tab_predict:
                 tahun_data = st.number_input("Tahun Data", 2000, 2100, 2024)
 
             tkp = st.text_input("TKP (lokasi kejadian)", "")
-            submitted = st.form_submit_button("Prediksi")
+            submitted = st.form_submit_button("🔍 Klasifikasikan")
 
         if submitted:
             from preprocessing import (
@@ -299,15 +261,15 @@ with tab_predict:
             df_input = pd.DataFrame([row])[FITUR]
             X_input = build_features(df_input, train_columns=st.session_state.train_columns)
 
-            pred = st.session_state.model.predict(X_input)[0]
+            hasil = st.session_state.model.predict(X_input)[0]
             proba = st.session_state.model.predict_proba(X_input)[0]
             classes = st.session_state.model.classes_
 
             st.divider()
-            if pred == "Berat":
-                st.error(f"### Hasil Prediksi: **{pred}**")
+            if hasil == "Berat":
+                st.error(f"### Hasil Klasifikasi: **{hasil}**")
             else:
-                st.success(f"### Hasil Prediksi: **{pred}**")
+                st.success(f"### Hasil Klasifikasi: **{hasil}**")
 
             proba_df = pd.DataFrame(
                 {"Kelas": classes, "Probabilitas": proba}
@@ -315,7 +277,7 @@ with tab_predict:
             st.bar_chart(proba_df)
 
         st.divider()
-        st.subheader("Prediksi banyak data sekaligus (batch)")
+        st.subheader("Klasifikasi banyak data sekaligus (batch)")
         batch_file = st.file_uploader(
             "Unggah file Excel data baru (format sama seperti data training)",
             type=["xlsx", "xls"],
@@ -333,16 +295,16 @@ with tab_predict:
                 X_batch = build_features(
                     df_batch, train_columns=st.session_state.train_columns
                 )
-                preds = st.session_state.model.predict(X_batch)
+                hasil_batch = st.session_state.model.predict(X_batch)
                 df_result = df_batch_raw.copy()
-                df_result["PREDIKSI"] = preds
+                df_result["HASIL KLASIFIKASI"] = hasil_batch
 
-                st.write("Hasil prediksi:")
+                st.write("Hasil klasifikasi:")
                 st.dataframe(df_result)
 
                 csv = df_result.to_csv(index=False).encode("utf-8")
                 st.download_button(
-                    "⬇️ Unduh Hasil (.csv)", csv, "hasil_prediksi.csv", "text/csv"
+                    "⬇️ Unduh Hasil (.csv)", csv, "hasil_klasifikasi.csv", "text/csv"
                 )
 
 # ---------------------------------------------------------------------------
