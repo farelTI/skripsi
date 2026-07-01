@@ -197,26 +197,6 @@ with tab_train:
 with tab_predict:
     st.header("Prediksi Kasus Baru")
 
-    st.write(
-        "Gunakan model yang baru dilatih di tab sebelumnya, atau unggah "
-        "file model (.joblib) yang sudah pernah disimpan."
-    )
-
-    model_file = st.file_uploader(
-        "Atau unggah model (.joblib) yang sudah pernah dilatih", type=["joblib"], key="model_uploader"
-    )
-    if model_file is not None:
-        artifact = load_artifact_bytes(model_file.read())
-        st.session_state.model = artifact["model"]
-        st.session_state.train_columns = artifact["train_columns"]
-        st.session_state.top_tkp = artifact["top_tkp"]
-        st.success("Model berhasil dimuat dari file.")
-
-    if st.session_state.model is None:
-        st.info("Belum ada model. Latih model di tab '📊 Latih Model' terlebih dahulu, atau unggah file model.")
-    else:
-        st.subheader("Input Data Kasus")
-
         # Opsi A: input manual lewat form
         with st.form("predict_form"):
             c1, c2 = st.columns(2)
