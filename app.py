@@ -135,7 +135,6 @@ with tab_train:
         with st.spinner("Menghitung cross-validation score..."):
             cv_scores = cross_val_score(model, X, y, cv=cv_folds, scoring="accuracy")
 
-        # Simpan ke session state
         st.session_state.model = model
         st.session_state.train_columns = X.columns.tolist()
         st.session_state.top_tkp = top_tkp
@@ -153,7 +152,6 @@ with tab_train:
         save_artifact(model, X.columns.tolist(), top_tkp)
         st.success("Model selesai dilatih ✅")
 
-    # --- Tampilkan hasil jika sudah ada model di session ---
     if st.session_state.model is not None:
         st.divider()
         st.subheader("Hasil Evaluasi")
@@ -197,7 +195,28 @@ with tab_train:
 with tab_predict:
     st.header("Prediksi Kasus Baru")
 
-        # Opsi A: input manual lewat form
+    st.write(
+        "Gunakan model yang baru dilatih di tab sebelumnya, atau unggah "
+        "file model (.joblib) yang sudah pernah disimpan."
+    )
+
+    model_file = st.file_uploader(
+        "Unggah model (.joblib) yang sudah pernah dilatih",
+        type=["joblib"],
+        key="model_uploader",
+    )
+    if model_file is not None:
+        artifact = load_artifact_bytes(model_file.read())
+        st.session_state.model = artifact["model"]
+        st.session_state.train_columns = artifact["train_columns"]
+        st.session_state.top_tkp = artifact["top_tkp"]
+        st.success("Model berhasil dimuat dari file.")
+
+    if st.session_state.model is None:
+        st.info("Belum ada model. Latih model di tab '📊 Latih Model' terlebih dahulu, atau unggah file model.")
+    else:
+        st.subheader("Input Data Kasus")
+
         with st.form("predict_form"):
             c1, c2 = st.columns(2)
             with c1:
@@ -235,17 +254,21 @@ with tab_predict:
                 bulan = st.selectbox("Bulan", list(range(1, 13)))
                 hari_weekend = st.selectbox("Hari", ["Weekday", "Weekend"])
             with c5:
-                kerugian = st.number_input("Kerugian Materi (Rp)", 0, 1_000_000_000, 1_000_000, step=100_000)
+                kerugian = st.number_input(
+                    "Kerugian Materi (Rp)", 0, 1_000_000_000, 1_000_000, step=100_000
+                )
                 tahun_data = st.number_input("Tahun Data", 2000, 2100, 2024)
 
             tkp = st.text_input("TKP (lokasi kejadian)", "")
-
             submitted = st.form_submit_button("Prediksi")
 
         if submitted:
             from preprocessing import (
-                kategori_umur, jenis_tabrakan as f_jenis, risiko_tabrakan,
-                kategori_kerugian, kategori_waktu, jam_sibuk,
+                kategori_umur,
+                risiko_tabrakan,
+                kategori_kerugian,
+                kategori_waktu,
+                jam_sibuk,
             )
 
             risiko = risiko_tabrakan(jenis_tabrakan)
@@ -286,11 +309,13 @@ with tab_predict:
             else:
                 st.success(f"### Hasil Prediksi: **{pred}**")
 
-            proba_df = pd.DataFrame({"Kelas": classes, "Probabilitas": proba}).set_index("Kelas")
+            proba_df = pd.DataFrame(
+                {"Kelas": classes, "Probabilitas": proba}
+            ).set_index("Kelas")
             st.bar_chart(proba_df)
 
         st.divider()
-        st.subheader("Atau prediksi banyak data sekaligus (batch)")
+        st.subheader("Prediksi banyak data sekaligus (batch)")
         batch_file = st.file_uploader(
             "Unggah file Excel data baru (format sama seperti data training)",
             type=["xlsx", "xls"],
@@ -305,7 +330,9 @@ with tab_predict:
                 st.error("File tidak sesuai format. Kolom hilang: " + ", ".join(missing))
             else:
                 df_batch, _ = preprocess(df_batch_raw, top_tkp=st.session_state.top_tkp)
-                X_batch = build_features(df_batch, train_columns=st.session_state.train_columns)
+                X_batch = build_features(
+                    df_batch, train_columns=st.session_state.train_columns
+                )
                 preds = st.session_state.model.predict(X_batch)
                 df_result = df_batch_raw.copy()
                 df_result["PREDIKSI"] = preds
@@ -314,7 +341,9 @@ with tab_predict:
                 st.dataframe(df_result)
 
                 csv = df_result.to_csv(index=False).encode("utf-8")
-                st.download_button("⬇️ Unduh Hasil (.csv)", csv, "hasil_prediksi.csv", "text/csv")
+                st.download_button(
+                    "⬇️ Unduh Hasil (.csv)", csv, "hasil_prediksi.csv", "text/csv"
+                )
 
 # ---------------------------------------------------------------------------
 # TAB 3 — ABOUT
